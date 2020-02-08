@@ -1,68 +1,96 @@
 App = {
-  web3Provider: null,
-  contracts: {},
+	web3Provider: null,
+	contracts: {},
+	account: '0x0',
 
-  init: async function() {
-    // Load pets.
-    $.getJSON('../pets.json', function(data) {
-      var petsRow = $('#petsRow');
-      var petTemplate = $('#petTemplate');
+	init: async function() {
+		return await App.initWeb3();
+	},
 
-      for (i = 0; i < data.length; i ++) {
-        petTemplate.find('.panel-title').text(data[i].name);
-        petTemplate.find('img').attr('src', data[i].picture);
-        petTemplate.find('.pet-breed').text(data[i].breed);
-        petTemplate.find('.pet-age').text(data[i].age);
-        petTemplate.find('.pet-location').text(data[i].location);
-        petTemplate.find('.btn-adopt').attr('data-id', data[i].id);
+	initWeb3: async function() {
+		if (typeof web3 !== 'undefined') {
+			// if a web3 instance is already provided by metamask
+			App.web3Provider = web3.currentProvider;
+			web3 = new Web3(web3.currentProvider);
+		} else {
+			// specify default instance if no web3 instance is provided
+			App.web3Provider = new Web3.providers.HttpProvider(
+				'http://localhost:7545'
+			);
+			web3 = new Web3(App.web3Provider);
+		}
 
-        petsRow.append(petTemplate.html());
-      }
-    });
+		return App.initContract();
+	},
 
-    return await App.initWeb3();
-  },
+	initContract: function() {
+		$.getJSON('Election.json', function(election) {
+			// instantiate a new truffle contract from the artifacts
+			App.contracts.Election = TruffleContract(election);
 
-  initWeb3: async function() {
-    /*
-     * Replace me...
-     */
+			// connect provider to interact with contract
+			App.contracts.Election.setProvider(App.web3Provider);
+			return App.render();
+		});
+	},
 
-    return App.initContract();
-  },
+	render: function() {
+		var electionInstance;
+		var loader = $('#loader');
+		var content = $('#content');
 
-  initContract: function() {
-    /*
-     * Replace me...
-     */
+		loader.show();
+		content.hide();
 
-    return App.bindEvents();
-  },
+		//load accounts data
 
-  bindEvents: function() {
-    $(document).on('click', '.btn-adopt', App.handleAdopt);
-  },
+		web3.eth.getCoinbase(function(error, account) {
+			if (error === null) {
+				App.account = account;
+				$('#accountAddress').html('Your accounts: ' + account);
+			}
+		});
 
-  markAdopted: function(adopters, account) {
-    /*
-     * Replace me...
-     */
-  },
+		// load contract data
+		App.contracts.Election.deployed()
+			.then(function(instance) {
+				electionInstance = instance;
+				return electionInstance.candidatesCount();
+			})
+			.then(function(candidatesCount) {
+				var candidateResult = $('#candidatesResults');
+				candidateResult.empty();
 
-  handleAdopt: function(event) {
-    event.preventDefault();
+				for (var i = 1; i <= candidatesCount; i++) {
+					electionInstance.candidates(i).then(function(candidate) {
+						var id = candidate[0];
+						var name = candidate[1];
+						var voteCount = candidate[2];
+						console.log(name);
 
-    var petId = parseInt($(event.target).data('id'));
-
-    /*
-     * Replace me...
-     */
-  }
-
+						//render candidate result
+						var candidateTemplate =
+							'<tr><th>' +
+							id +
+							'</th><td>' +
+							name +
+							'</td><td>' +
+							voteCount +
+							'</td></tr>';
+						candidateResult.append(candidateTemplate);
+					});
+				}
+				loader.hide();
+				content.show();
+			})
+			.catch(function(error) {
+				console.warn(error);
+			});
+	}
 };
 
 $(function() {
-  $(window).load(function() {
-    App.init();
-  });
+	$(window).load(function() {
+		App.init();
+	});
 });
